@@ -263,7 +263,7 @@ function backup {
 	sleep 5
 
 	# Get the Path + Size of the LV to Backup
-	BACKUP_LV_PATH=$(lvs --noheading -o lv_path | grep -P "${BACKUP_LV}( |$)" | tr -d '  ')
+	BACKUP_LV_PATH=$(lvs --noheading -o lv_path | grep -P "/${BACKUP_LV}( |$)" | tr -d '  ')
 	BACKUP_LV_SIZE=$(lvs ${BACKUP_LV_PATH} -o LV_SIZE --noheadings --units g --nosuffix)
 	SNAPSHOT_NAME="${BACKUP_LV}_snapshot"
 	SNAPSHOT_PATH="${BACKUP_LV_PATH}_snapshot"
@@ -310,7 +310,7 @@ function restore {
 	echo "[INFO] LV Name: ${RESTORE_LV}"
 	echo "[INFO] LV Size: ${restore_size}"
 
-	RESTORE_LV_PATH=$(lvs --noheading -o lv_path | grep -P "${RESTORE_LV}( |$)" | tr -d '  ')
+	RESTORE_LV_PATH=$(lvs --noheading -o lv_path | grep -P "/${RESTORE_LV}( |$)" | tr -d '  ')
 	RESTORE_LV_SIZE=$(lvs ${RESTORE_LV_PATH} -o LV_SIZE --noheadings --units g --nosuffix)
 
 	if [ "${RESTORE_LV_PATH}" ] # Is there any LV with the same name?
@@ -336,7 +336,7 @@ function restore {
 		lvcreate -n ${RESTORE_LV} -L ${restore_size} ${VG}
 	fi
 
-	RESTORE_LV_PATH=$(lvs --noheading -o lv_path | grep -P "${RESTORE_LV}( |$)" | tr -d '  ')
+	RESTORE_LV_PATH=$(lvs --noheading -o lv_path | grep -P "/${RESTORE_LV}( |$)" | tr -d '  ')
 	echo "[INFO] Starting Restore of ${RESTORE_LV}"
 	sleep 2
 	restic dump --path /${RESTORE_LV}.img.gz latest ${RESTORE_LV}.img.gz | \
@@ -378,7 +378,7 @@ then
 		echo "[INFO] Verifying that all listed LV exist"
 		grep -v '^#' ${LVS_TO_BACKUP} | while read -r line
 		do
-			lvs --noheading -o lv_path | grep -P "$line( |$)" || (echo "Cannot find LV $line" && failed)
+			lvs --noheading -o lv_path | grep -P "/$line( |$)" || (echo "Cannot find LV $line" && failed)
 		done
 
 		# Read the file provided and backup each LV
