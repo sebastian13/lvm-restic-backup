@@ -10,7 +10,13 @@ set -e
 # Define various output colors
 cecho () {
   local _color=$1; shift
-  echo -e "$(tput setaf $_color)$@$(tput sgr0)"
+  # If running via cron, don't use colors.
+  if tty -s
+  then
+  	echo -e "$(tput setaf $_color)$@$(tput sgr0)"
+  else
+  	echo $1
+  fi
 }
 black=0; red=1; green=2; yellow=3; blue=4; pink=5; cyan=6; white=7;
 
