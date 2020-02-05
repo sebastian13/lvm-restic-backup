@@ -55,7 +55,7 @@ cd $WORKDIR
 # Create Log Directory
 LOGDIR="/var/log/lvm-restic"
 mkdir -p $LOGDIR
-RLOG="/tmp/lvm-restic.log"
+RLOG="${LOGDIR}/lvm-rescript-running.log"
 
 # -------------------------------------------------------
 #   Check package availability
@@ -63,9 +63,6 @@ RLOG="/tmp/lvm-restic.log"
 
 command -v restic >/dev/null 2>&1 || { echo "[Error] Please install restic"; exit 1; }
 command -v rescript >/dev/null 2>&1 || { echo "[Error] Please install rescript"; exit 1; }
-command -v pip >/dev/null 2>&1 || { echo "[Error] Please install python-pip"; exit 1; }
-python -c 'import humanfriendly' >/dev/null 2>&1 || { echo "[Error] Please run 'pip install humanfriendly'"; exit 1; } 
-
 
 # -------------------------------------------------------
 #   Loop to load arguments
@@ -208,14 +205,17 @@ block-level-backup () {
 		--tag LV \
 		--tag block-level-backup \
 		--tag ${BACKUP_LV_SIZE}g_size \
+		--tag ${LV_TO_BACKUP} \
 		--stdin \
 		--stdin-filename ${BACKUP_LV}.img | \
-		tee -a ${LOGDIR}/lvm-restic-backup.log | \
+		tee -a ${LOGDIR}/lvm-restic-block-level-backup.log | \
 		tee ${RLOG}
 	echo
 }
 
 block-level-gz-backup () {
+	command -v pigz >/dev/null 2>&1 || { echo "[Error] Please install pigz"; exit 1; }
+
 	dd if=${SNAPSHOT_PATH} bs=4M status=none | \
 		pigz --fast --rsyncable | \
 		restic backup \
@@ -223,10 +223,11 @@ block-level-gz-backup () {
 		--tag LV \
 		--tag block-level-backup \
 		--tag pigz \
+		--tag ${LV_TO_BACKUP} \
 		--tag ${BACKUP_LV_SIZE}g_size \
 		--stdin \
 		--stdin-filename ${BACKUP_LV}.img.gz | \
-		tee -a ${LOGDIR}/lvm-restic-backup.log | \
+		tee -a ${LOGDIR}/lvm-restic-block-level-gz-backup.log | \
 		tee ${RLOG}
 	echo
 }
@@ -253,9 +254,12 @@ file-level-backup () {
 		--verbose \
 		--tag LV \
 		--tag file-level-backup \
+		--tag ${LV_TO_BACKUP} \
 		--tag ${BACKUP_LV_SIZE}g_size \
 		backup ${SNAPSHOT_MOUNTPOINT} \
-		--exclude-file="${RESTIC_EXCLUDE}"
+		--exclude-file="${RESTIC_EXCLUDE}" | \
+		tee -a ${LOGDIR}/lvm-restic-file-level-backup.log | \
+		tee ${RLOG}
 
     # Unmount the Snapshot & Delete the mount-point
 	umount ${SNAPSHOT_MOUNTPOINT}
@@ -430,15 +434,15 @@ zabbix-requirements () {
 		cecho $red "Zabbix-Agent is not running. Will skip zabbix logging."
 		skip_zabbix=true
 	fi
-	if ! `command -v pip >/dev/null 2>&1`
+	if ! `command -v pip3 >/dev/null 2>&1`
 	then
-		cecho $red "Please install python-pip."
+		cecho $red "Please install python3-pip."
 		skip_zabbix=true
 	fi
-	if ! `python -c 'import humanfriendly' >/dev/null 2>&1`
+	if ! `python3 -c 'import humanfriendly' >/dev/null 2>&1`
 	then
-		cecho $red "Could not import python humanfriendly!"
-		cecho $red "Please run 'pip install humanfriendly'."
+		cecho $red "Could not import python3 humanfriendly!"
+		cecho $red "Please run 'pip3 install humanfriendly'."
 		skip_zabbix=true
 	fi
 	if [ ! -f "/etc/zabbix/scripts/rescript-lvm-discovery.pl" ]
@@ -540,6 +544,9 @@ case "$cmd" in
 		exit 1
 		;;
 esac
+
+# Remove temp. logfile
+rm $RLOG
 
 # Remove all remaining snapshots
 clean-all-snapshots

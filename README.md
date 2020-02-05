@@ -5,11 +5,12 @@ This bash script backups logical volumes via [restic](https://restic.net/). To s
 ## Requirements
 - [restic](https://restic.net/)
 - [rescript](https://gitlab.com/sulfuror/rescript.sh)
+- [pigz](https://zlib.net/pigz/)
 
 ## Optional Req. for Zabbix Monitoring
 - zabbix-sender
-- pip
-- python: humanfriendly
+- pip3
+- python3: humanfriendly
 - Zabbix [Rescript Restic Backup Template](https://github.com/sebastian13/zabbix-templates/tree/master/rescript-restic-backup)
 
 ## How to use
