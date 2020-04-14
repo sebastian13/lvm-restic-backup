@@ -7,6 +7,9 @@
 # Exit if any statement returns a non-true value
 set -e
 
+# Suppress warnings about unexpected file descriptors passed into LVM
+export LVM_SUPPRESS_FD_WARNINGS=1
+
 # Define various output colors
 cecho () {
   local _color=$1; shift
@@ -189,6 +192,11 @@ ctrl_c () {
 		cecho $red "Trapped CTRL-C"
 		cecho $red "Signal interrupt received, cleaning up"
 		echo
+		if [ ! -d ${SNAPSHOT_MOUNTPOINT} ]
+		then
+        	umount ${SNAPSHOT_MOUNTPOINT}
+			rmdir ${SNAPSHOT_MOUNTPOINT}
+		fi
         clean-all-snapshots
         exit 130
 }
@@ -205,7 +213,7 @@ block-level-backup () {
 		--tag LV \
 		--tag block-level-backup \
 		--tag ${BACKUP_LV_SIZE}g_size \
-		--tag ${LV_TO_BACKUP} \
+		--tag ${BACKUP_LV} \
 		--stdin \
 		--stdin-filename ${BACKUP_LV}.img | \
 		tee -a ${LOGDIR}/lvm-restic-block-level-backup.log | \
@@ -223,7 +231,7 @@ block-level-gz-backup () {
 		--tag LV \
 		--tag block-level-backup \
 		--tag pigz \
-		--tag ${LV_TO_BACKUP} \
+		--tag ${BACKUP_LV} \
 		--tag ${BACKUP_LV_SIZE}g_size \
 		--stdin \
 		--stdin-filename ${BACKUP_LV}.img.gz | \
@@ -254,7 +262,7 @@ file-level-backup () {
 		--verbose \
 		--tag LV \
 		--tag file-level-backup \
-		--tag ${LV_TO_BACKUP} \
+		--tag ${BACKUP_LV} \
 		--tag ${BACKUP_LV_SIZE}g_size \
 		backup ${SNAPSHOT_MOUNTPOINT} \
 		--exclude-file="${RESTIC_EXCLUDE}" | \
@@ -341,18 +349,32 @@ backup () {
 # -------------------------------------------------------
 
 restore-lv () {
-	echo
-	echo "*** RESTORE ***"
-
 	# Check provided volume group
 	if [ ! ${VG} ]
 	then
-	    echo "[Error] Volume Group must be specified"
+	    cecho $red "[Error] Volume Group must be specified"
 	    failed
 	    exit 1
 	fi
 
-	restore_size=$(restic ls --json --path /${RESTORE_LV}.img.gz latest / | jq '.tags' | grep -o '[0-9]*,[0-9]*g')
+	cecho $pink "Getting all snapshots of ${RESTORE_LV}"
+	rescript nas02-blocklevel-gz snapshots --path \/${RESTORE_LV}.img.gz
+
+	snapshots_json=$(rescript nas02-blocklevel-gz snapshots --json --path \/${RESTORE_LV}.img.gz)
+	arr=( $(echo $snapshots_json | jq -r '.[].short_id') )
+
+	COLUMNS=12
+	cecho $pink "Which snapshot should be restored?"
+	select short_id in ${arr[@]}
+	do
+	    [ $short_id ] && break
+	done
+	unset COLUMNS
+
+	cecho $pink "ID $short_id selected."
+
+	cecho $pink "Looking for ${RESTORE_LV}.img.gz ..."
+	restore_size=$(restic ls --json --path \/${RESTORE_LV}.img.gz $short_id | jq '.tags' | grep -o '[0-9]*,[0-9]*g')
 	restore_size_int=$( echo ${restore_size//,/.} | python3 -c 'import sys; import humanfriendly; print (humanfriendly.parse_size(sys.stdin.read(), binary=True))')
 	
 	echo "[INFO] LV Name: ${RESTORE_LV}"
@@ -374,7 +396,7 @@ restore-lv () {
 		then
 		    echo "ok"
 		else
-			echo "Please rename/remove the LV ${RESTORE_LV} manually!"
+			cecho $red "Please rename/remove the LV ${RESTORE_LV} manually!"
 			failed
 			exit
 		fi
@@ -387,25 +409,26 @@ restore-lv () {
 	RESTORE_LV_PATH=$(lvs --noheading -o lv_path | grep -P "/${RESTORE_LV}( |$)" | tr -d '  ')
 	echo "[INFO] Starting Restore of ${RESTORE_LV}"
 	sleep 2
-	restic dump --path /${RESTORE_LV}.img.gz latest ${RESTORE_LV}.img.gz | \
+	restic dump --path /${RESTORE_LV}.img.gz $short_id ${RESTORE_LV}.img.gz | \
 		unpigz | pv -s ${restore_size_int} | \
 		dd of=${RESTORE_LV_PATH} bs=4M
 }
 
-select-vg () {
-	echo
-	cecho $pink "Please select one of the following Volume Group(s):"
-	select vg in $(vgs --noheading -o vg_name | tr -d '  ')
-	do
-		[ $vg ] && break
-	done
-	echo
-}
-
 restore () {
+	echo
+	cecho $pink "================"
+	cecho $pink "STARTING RESTORE"
+
 	if [ "${LV_TO_RESTORE}" ]
 	then
-		select-vg
+		echo
+		cecho $pink "Please select the Volume Group, where the Logical Volume(s) should be restored to:"
+		select VG in $(vgs --noheading -o vg_name | tr -d '  ')
+		do
+			[ $VG ] && break
+		done
+		echo
+
 		if [ -f "${LV_TO_RESTORE}" ] 
 		then
 			# Read the file provided and backup each LV
@@ -534,7 +557,6 @@ case "$cmd" in
 		backup
 		;;
 	restore)
-		echo "restore selected"
 		LV_TO_RESTORE=$3
 		restore
 		;;
@@ -546,7 +568,7 @@ case "$cmd" in
 esac
 
 # Remove temp. logfile
-rm $RLOG
+rm -f $RLOG
 
 # Remove all remaining snapshots
 clean-all-snapshots
