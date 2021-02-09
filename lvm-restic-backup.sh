@@ -498,6 +498,8 @@ zabbix-discovery () {
 log-backup () {
 	if [ $skip_zabbix = false ]
 	then
+		set +e
+
 		arr=()
 		TIME=$(stat -c '%015Y' $RLOG)
 
@@ -538,6 +540,8 @@ log-backup () {
 		# If sending raises an error, the script starts a second try after one minute.
 		send-to-zabbix || { cecho $red "[ERROR] Sending or processing of some items failed. Will wait one minute before trying again..."; sleep 60; send-to-zabbix; }
 		echo
+
+		set -e
 	else
 		cecho $red "[Skipping Sending Data to Zabbix]"
 	fi
