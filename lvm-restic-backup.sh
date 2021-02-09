@@ -7,9 +7,6 @@
 # Exit if any statement returns a non-true value
 set -e
 
-# Suppress warnings about unexpected file descriptors passed into LVM
-export LVM_SUPPRESS_FD_WARNINGS=1
-
 # Define various output colors
 cecho () {
   local _color=$1; shift
@@ -170,17 +167,21 @@ clean-snapshot () {
 
 clean-all-snapshots () {
 	# Look for old snapshots
-	ACTIVE_SNAPSHOTS=$(lvs -o lv_path --noheadings -S "lv_attr=~[^s.*]" | tr -d '  ' | grep "_snapshot$")
-	if [ ! -z "$ACTIVE_SNAPSHOTS" ]
+	ACTIVE_SNAPSHOTS=$(lvs -o lv_path --noheadings --select "lv_name=~[_snapshot$],lv_attr=~[^s.*]" | tr -d '  ')
+	if [ -n "$ACTIVE_SNAPSHOTS" ]
 	then
 		cecho $red "Removing the following active snapshots:"
 		cecho $red "${ACTIVE_SNAPSHOTS}"
 		echo
-		sleep 5
+		sleep 10
 		for i in ${ACTIVE_SNAPSHOTS}
 		do
 			lvremove -f $i
 		done
+		echo
+	else
+		cecho $green "There are no active snapshots named *_snapshot on this system."
+		echo
 	fi
 }
 
