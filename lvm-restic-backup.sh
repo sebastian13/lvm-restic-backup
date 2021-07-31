@@ -317,15 +317,22 @@ backup () {
 	then
 		if [ -f "${LV_TO_BACKUP}" ] 
 		then
-			echo "[INFO] Verifying that all listed LV exist"
+			echo "[INFO] Verify that all listed LVs exist"
+			echo "# Temporary backup list `date`" > /tmp/backuplist.tmp
 			grep -v '^#' ${LV_TO_BACKUP} | while read -r line
 			do
-				lvs --noheading -o lv_path | grep -P "/$line( |$)" || missing=true
-				#if (lvs --noheading -o lv_path | grep -P "/$line( |$)")
+				if (lvs --noheading -o lv_path | grep -P "/$line( |$)"); then
+					echo "$line" >> /tmp/backuplist.tmp
+				else
+					echo
+					cecho $red "[ERROR] Could not find $line !                      <<<<<<<<"
+					cecho $red "        $line cannot be included in this backup !   <<<<<<<<"
+					echo
+				fi
 			done
 
-			# If any LV is missing, exit now
-			if [ "$missing" = true ]; then echo "Not all LVs listed exist." && failed; fi
+			# Rewrite Backup List to exclude missing LVs
+			LV_TO_BACKUP="/tmp/backuplist.tmp"
 
 			# Read the file provided and backup each LV
 			grep -v '^#' ${LV_TO_BACKUP} | while read -r line

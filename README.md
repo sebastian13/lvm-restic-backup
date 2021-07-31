@@ -11,7 +11,7 @@ This bash script backups logical volumes via [restic](https://restic.net/). To s
 - zabbix-sender
 - pip3
 - python3: humanfriendly
-- Zabbix [Rescript Restic Backup Template](https://github.com/sebastian13/zabbix-templates/tree/master/rescript-restic-backup)
+- Zabbix [Rescript Restic Backup Template](https://github.com/sebastian13/zabbix-template-rescript)
 
 ## How to use
 
@@ -32,7 +32,7 @@ curl -o /usr/bin/lvm-rescript https://raw.githubusercontent.com/sebastian13/lvm-
 chmod +x /usr/bin/lvm-rescript
 ```
 
-For Zabbix LVM Discovery also download the [script](https://github.com/sebastian13/zabbix-templates/tree/master/rescript-restic-backup):
+For Zabbix LVM Discovery also download the [script](https://github.com/sebastian13/zabbix-template-rescript):
 
 ```bash
 curl -o /etc/zabbix/scripts/rescript-lvm-discovery.pl https://raw.githubusercontent.com/sebastian13/zabbix-templates/master/rescript-restic-backup/scripts/rescript-lvm-discovery.pl
