@@ -495,7 +495,8 @@ zabbix-discovery () {
 		LVM_DISC=$(/etc/zabbix/scripts/rescript-lvm-discovery.pl)
 		echo "$LVM_DISC" | python -m json.tool
 		echo
-		zabbix_sender --config /etc/zabbix/zabbix_agentd.conf --key "rescript.lv.discovery" --value "$LVM_DISC"
+		zabbix_sender --config /etc/zabbix/zabbix_agentd.conf --key "rescript.lv.discovery" --value "$LVM_DISC" \
+			|| { echo "[Error] Sending to Zabbix failed. Will skip logging for now."; skip_zabbix=true; }
 		echo
 	else
 		cecho $red "[Skipping Zabbix Discovery]"
