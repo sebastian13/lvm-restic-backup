@@ -23,7 +23,7 @@ lvm-rescript [repo_name] [command] [lv_name|path-to-list]
 - `block-level-backup` creates a lvm-snapshot & pipes the volume using dd to restic
 - `block-level-gz-backup` creates a lvm-snapshot & pipes the volume using dd and pigz to restic
 - `file-level-backup` creates a lvm-snapshot & creates a restic backup using the mounted snapshot
-- `restore` restores logical volume(s)
+- `block-level-gz-restore` restores dd and pigz logical volume(s)
 
 ## How to install
 

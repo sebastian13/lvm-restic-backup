@@ -356,9 +356,25 @@ backup () {
 #   The restore task
 # -------------------------------------------------------
 
-restore-lv () {
+block-level-gz-restore () {
+	command -v unpigz >/dev/null 2>&1 || { echo "[Error] Please install pigz"; exit 1; }
+	command -v pv >/dev/null 2>&1 || { echo "[Error] Please install pv"; exit 1; }
+	command -v awk >/dev/null 2>&1 || { echo "[Error] Please install awk"; exit 1; }
+	command -v jq >/dev/null 2>&1 || { echo "[Error] Please install jq"; exit 1; }
+	if ! `command -v pip3 >/dev/null 2>&1`
+	then
+		cecho $red "Please install python3-pip."
+		skip_zabbix=true
+	fi
+	if ! `python3 -c 'import humanfriendly' >/dev/null 2>&1`
+	then
+		cecho $red "Could not import python3 humanfriendly!"
+		cecho $red "Please run 'pip3 install humanfriendly'."
+		skip_zabbix=true
+	fi
+
 	# Check provided volume group
-	if [ ! ${VG} ]
+	if [ ! ${vg} ]
 	then
 	    cecho $red "[Error] Volume Group must be specified"
 	    failed
@@ -366,9 +382,9 @@ restore-lv () {
 	fi
 
 	cecho $pink "Getting all snapshots of ${RESTORE_LV}"
-	rescript nas02-blocklevel-gz snapshots --path \/${RESTORE_LV}.img.gz
+	restic snapshots --path \/${RESTORE_LV}.img.gz
 
-	snapshots_json=$(rescript nas02-blocklevel-gz snapshots --json --path \/${RESTORE_LV}.img.gz)
+	snapshots_json=$(restic snapshots --json --path \/${RESTORE_LV}.img.gz)
 	arr=( $(echo $snapshots_json | jq -r '.[].short_id') )
 
 	COLUMNS=12
@@ -379,63 +395,81 @@ restore-lv () {
 	done
 	unset COLUMNS
 
-	cecho $pink "ID $short_id selected."
+	cecho $pink "ID $short_id selected. Checking data."
+	restore_info=$(restic ls --json $short_id)
+	restore_size=$(echo $restore_info | jq '.tags' | grep -o '[0-9]\.[0-9]*._size' | sed 's/_size$//')
+	restore_size_int=$( echo $restore_size | python3 -c 'import sys; import humanfriendly; print (humanfriendly.parse_size(sys.stdin.read(), binary=True))')
 
-	cecho $pink "Looking for ${RESTORE_LV}.img.gz ..."
-	restore_size=$(restic ls --json --path \/${RESTORE_LV}.img.gz $short_id | jq '.tags' | grep -o '[0-9]*,[0-9]*g')
-	restore_size_int=$( echo ${restore_size//,/.} | python3 -c 'import sys; import humanfriendly; print (humanfriendly.parse_size(sys.stdin.read(), binary=True))')
-	
 	echo "[INFO] LV Name: ${RESTORE_LV}"
-	echo "[INFO] LV Size: ${restore_size}"
+	echo "[INFO] LV Size: ${restore_size}, ${restore_size_int}"
 
-	RESTORE_LV_PATH=$(lvs --noheading -o lv_path | grep -P "/${RESTORE_LV}( |$)" | tr -d '  ')
-	RESTORE_LV_SIZE=$(lvs ${RESTORE_LV_PATH} -o LV_SIZE --noheadings --units g --nosuffix)
-
-	if [ "${RESTORE_LV_PATH}" ] # Is there any LV with the same name?
+	# Check if a similar lv is present
+	if [ $(lvs --noheading -o lv_path ${vg} | grep "${RESTORE_LV}") ]
 	then
-		# https://stackoverflow.com/questions/1885525/how-do-i-prompt-a-user-for-confirmation-in-bash-script
-		echo
-		echo "There is already an LV with the same name in ${RESTORE_LV_PATH}"
-		echo "The size of the existing LV is ${RESTORE_LV_SIZE},"
-		echo "the size of the LV to restore is ${restore_size}"
-		read -p "Do you want to use the existing LV? (y/n)" -n 1 -r
-		echo    # (optional) move to a new line
-		if [[ $REPLY =~ ^[Yy]$ ]]
-		then
-		    echo "ok"
-		else
-			cecho $red "Please rename/remove the LV ${RESTORE_LV} manually!"
-			failed
-			exit
-		fi
-	else
-		echo "[INFO] Creating LV ${RESTORE_LV}, ${restore_size} on ${VG}"
-		sleep 2
-		lvcreate -n ${RESTORE_LV} -L ${restore_size} ${VG}
+		cecho $red "There is already an LV with the name ${RESTORE_LV} on ${vg}."
+		cecho $red "Please rename or remove the LV manually!"
+		failed
+		exit
 	fi
 
-	RESTORE_LV_PATH=$(lvs --noheading -o lv_path | grep -P "/${RESTORE_LV}( |$)" | tr -d '  ')
-	echo "[INFO] Starting Restore of ${RESTORE_LV}"
+	# Create the new LV
+	echo "Creating LV ${RESTORE_LV}, ${restore_size} on ${vg}"
+	sleep 2
+	lvcreate -n ${RESTORE_LV} -L ${restore_size} ${vg} ${pv}
+
+	restore_path=$(lvs --noheading -o lv_path | grep -P "/${RESTORE_LV}( |$)" | tr -d '  ')
+	echo "[INFO] LV PATH: $restore_path"
+
+	cecho $pink "STARTING RESTORE of ${RESTORE_LV}"
 	sleep 2
 	restic dump --path /${RESTORE_LV}.img.gz $short_id ${RESTORE_LV}.img.gz | \
 		unpigz | pv -s ${restore_size_int} | \
-		dd of=${RESTORE_LV_PATH} bs=4M
+		dd of=${restore_path} bs=4M
 }
 
 restore () {
+	# Check if restore was started in a screen session
+	if [ -z ${STY+x} ]
+	then
+		echo
+		cecho $red "This is NOT a screen session."
+		cecho $red "It is highly recommended to run the restore in a screen session!"
+		command -v screen >/dev/null 2>&1 || { cecho $red "Consider installing and using screen"; }
+		echo
+		sleep 10
+	else
+		cecho $pink "This is a screen session named '$STY'"
+	fi
+
 	echo
-	cecho $pink "================"
-	cecho $pink "STARTING RESTORE"
+	cecho $pink "============================="
+	cecho $pink "STARTING RESTORE PREPARATIONS"
 
 	if [ "${LV_TO_RESTORE}" ]
 	then
 		echo
 		cecho $pink "Please select the Volume Group, where the Logical Volume(s) should be restored to:"
-		select VG in $(vgs --noheading -o vg_name | tr -d '  ')
+		select vg in $(vgs --noheading -o vg_name | tr -d '  ')
 		do
-			[ $VG ] && break
+			[ $vg ] && break
 		done
 		echo
+
+		if [ $(pvs --noheading -o pv_name,vg_name | grep $vg | wc -l) -gt 0 ]
+		then
+			cecho $pink "$vg has more than one physical volume associated."
+			cecho $pink "Please select the pv you want to restore to"
+			echo
+			echo "  PV         VG  Fmt  Attr PSize    PFree"
+			pvs --noheading | grep $vg
+			echo
+			select pv in $(pvs --noheading -o pv_name,vg_name | grep $vg | awk '{print $1}')
+			do
+				[ $pv ] && break
+			done
+		else
+			pv=""
+		fi
 
 		if [ -f "${LV_TO_RESTORE}" ] 
 		then
@@ -443,12 +477,12 @@ restore () {
 			grep -v '^#' ${LV_TO_RESTORE} | while read -r line
 			do
 				RESTORE_LV=$line
-				restore-lv
+				eval $cmd
 			done
 		else
 			# Backup LV provided
 			RESTORE_LV=${LV_TO_RESTORE}
-			restore-lv
+			eval $cmd
 		fi
 	else
 		echo "LV(s) to restore missing. Please specify [lv-name] or [path-to-list]."
@@ -569,7 +603,7 @@ case "$cmd" in
 		LV_TO_BACKUP=$3
 		backup
 		;;
-	restore)
+	block-level-restore|block-level-gz-restore|file-level-restore)
 		LV_TO_RESTORE=$3
 		restore
 		;;
