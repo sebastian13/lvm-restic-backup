@@ -284,7 +284,7 @@ snap-and-back () {
 
 	# Get the Path + Size of the LV to Backup
 	BACKUP_LV_PATH=$(lvs --noheading -o lv_path | grep -P "/${BACKUP_LV}( |$)" | tr -d '  ')
-	BACKUP_LV_SIZE=$(lvs ${BACKUP_LV_PATH} -o LV_SIZE --noheadings --units g --nosuffix)
+	BACKUP_LV_SIZE=$(lvs ${BACKUP_LV_PATH} -o LV_SIZE --noheadings --units g --nosuffix | sed 's/,/./g')
 	SNAPSHOT_NAME="${BACKUP_LV}_snapshot"
 	SNAPSHOT_PATH="${BACKUP_LV_PATH}_snapshot"
 
