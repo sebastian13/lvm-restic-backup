@@ -6,6 +6,13 @@ This bash script backups logical volumes via [restic](https://restic.net/). To s
 - [restic](https://restic.net/)
 - [rescript](https://gitlab.com/sulfuror/rescript.sh)
 - [pigz](https://zlib.net/pigz/)
+- [awk]()
+
+## Additional requirements for Restore
+- [pv](https://packages.debian.org/bullseye/pv)
+- [jq](https://packages.debian.org/bullseye/jq)
+- pip3
+- python3: humanfriendly
 
 ## Optional Req. for Zabbix Monitoring
 - zabbix-sender
@@ -23,7 +30,10 @@ lvm-rescript [repo_name] [command] [lv_name|path-to-list]
 - `block-level-backup` creates a lvm-snapshot & pipes the volume using dd to restic
 - `block-level-gz-backup` creates a lvm-snapshot & pipes the volume using dd and pigz to restic
 - `file-level-backup` creates a lvm-snapshot & creates a restic backup using the mounted snapshot
-- `block-level-gz-restore` restores dd and pigz logical volume(s)
+- `block-level-restore` restores dd stored logical volume(s)
+- `block-level-gz-restore` restores dd and pigz stored logical volume(s)
+- `file-level-restore` restores as ext4 disk using a volume mount
+
 
 ## How to install
 

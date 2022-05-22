@@ -356,6 +356,66 @@ backup () {
 #   The restore task
 # -------------------------------------------------------
 
+block-level-restore () {
+	command -v pv >/dev/null 2>&1 || { echo "[Error] Please install pv"; exit 1; }
+	command -v awk >/dev/null 2>&1 || { echo "[Error] Please install awk"; exit 1; }
+	command -v jq >/dev/null 2>&1 || { echo "[Error] Please install jq"; exit 1; }
+	command -v pip3 >/dev/null 2>&1 || { echo "[Error] Please install python3-pip"; exit 1; }
+	if ! `python3 -c 'import humanfriendly' >/dev/null 2>&1`
+	then
+		cecho $red "Could not import python3 humanfriendly!"
+		cecho $red "Please run 'pip3 install humanfriendly'."
+	fi
+
+	cecho $pink "Getting all snapshots of ${restore_lv_name}"
+	restic snapshots --tag block-level-backup,${restore_lv_name}
+
+	snapshots_json=$(restic snapshots --json --path \/${restore_lv_name}.img)
+	arr=( $(echo $snapshots_json | jq -r '.[].short_id') )
+
+	COLUMNS=12
+	cecho $pink "Which snapshot should be restored?"
+	select short_id in ${arr[@]}
+	do
+	    [ $short_id ] && break
+	done
+	unset COLUMNS
+
+	cecho $pink "ID $short_id selected. Reading properties."
+	restore_lv_info=$(restic snapshots --json $short_id)
+	restore_lv_size=$(echo $restore_lv_info | jq '.tags' | grep -o '[0-9]*\.[0-9]*._size' | sed 's/_size$//')
+	restore_lv_size_int=$( echo $restore_lv_size | python3 -c 'import sys; import humanfriendly; print (humanfriendly.parse_size(sys.stdin.read(), binary=True))')
+
+	echo "[INFO] LV Name: ${restore_lv_name}"
+	echo "[INFO] LV Size: ${restore_lv_size}, ${restore_lv_size_int}"
+
+	# Check if a similar lv is present
+	if [ $(lvs --noheading -o lv_path ${vg} | grep "${restore_lv_name}") ]
+	then
+		cecho $red "There is already an LV with the name ${restore_lv_name} on ${vg}."
+		cecho $red "Please rename or remove the LV manually!"
+		failed
+		exit
+	fi
+
+	# Create the new LV
+	echo "Creating LV ${restore_lv_name}, ${restore_lv_size} on ${vg}"
+	sleep 2
+	lvcreate -n ${restore_lv_name} -L ${restore_lv_size} ${vg} ${pv}
+
+	restore_lv_path=$(lvs --noheading -o lv_path | grep -P "/${restore_lv_name}( |$)" | tr -d '  ')
+	echo "[INFO] LV PATH: $restore_lv_path"
+
+	echo
+	cecho $green "===================="
+	cecho $green "STARTING THE RESTORE"
+	echo
+	sleep 5
+	restic dump $short_id ${restore_lv_name}.img | \
+		pv -s ${restore_lv_size_int} | \
+		dd of=${restore_lv_path} bs=4M
+}
+
 block-level-gz-restore () {
 	command -v unpigz >/dev/null 2>&1 || { echo "[Error] Please install pigz"; exit 1; }
 	command -v pv >/dev/null 2>&1 || { echo "[Error] Please install pv"; exit 1; }
