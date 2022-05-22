@@ -369,7 +369,7 @@ block-level-gz-restore () {
 	fi
 
 	cecho $pink "Getting all snapshots of ${restore_lv_name}"
-	restic snapshots --path \/${restore_lv_name}.img.gz
+	restic snapshots --tag block-level-gz-backup,${restore_lv_name}
 
 	snapshots_json=$(restic snapshots --json --path \/${restore_lv_name}.img.gz)
 	arr=( $(echo $snapshots_json | jq -r '.[].short_id') )
