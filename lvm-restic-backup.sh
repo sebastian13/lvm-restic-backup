@@ -361,30 +361,17 @@ block-level-gz-restore () {
 	command -v pv >/dev/null 2>&1 || { echo "[Error] Please install pv"; exit 1; }
 	command -v awk >/dev/null 2>&1 || { echo "[Error] Please install awk"; exit 1; }
 	command -v jq >/dev/null 2>&1 || { echo "[Error] Please install jq"; exit 1; }
-	if ! `command -v pip3 >/dev/null 2>&1`
-	then
-		cecho $red "Please install python3-pip."
-		skip_zabbix=true
-	fi
+	command -v pip3 >/dev/null 2>&1 || { echo "[Error] Please install python3-pip"; exit 1; }
 	if ! `python3 -c 'import humanfriendly' >/dev/null 2>&1`
 	then
 		cecho $red "Could not import python3 humanfriendly!"
 		cecho $red "Please run 'pip3 install humanfriendly'."
-		skip_zabbix=true
 	fi
 
-	# Check provided volume group
-	if [ ! ${vg} ]
-	then
-	    cecho $red "[Error] Volume Group must be specified"
-	    failed
-	    exit 1
-	fi
+	cecho $pink "Getting all snapshots of ${restore_lv_name}"
+	restic snapshots --path \/${restore_lv_name}.img.gz
 
-	cecho $pink "Getting all snapshots of ${RESTORE_LV}"
-	restic snapshots --path \/${RESTORE_LV}.img.gz
-
-	snapshots_json=$(restic snapshots --json --path \/${RESTORE_LV}.img.gz)
+	snapshots_json=$(restic snapshots --json --path \/${restore_lv_name}.img.gz)
 	arr=( $(echo $snapshots_json | jq -r '.[].short_id') )
 
 	COLUMNS=12
@@ -395,36 +382,131 @@ block-level-gz-restore () {
 	done
 	unset COLUMNS
 
-	cecho $pink "ID $short_id selected. Checking data."
-	restore_info=$(restic ls --json $short_id)
-	restore_size=$(echo $restore_info | jq '.tags' | grep -o '[0-9]\.[0-9]*._size' | sed 's/_size$//')
-	restore_size_int=$( echo $restore_size | python3 -c 'import sys; import humanfriendly; print (humanfriendly.parse_size(sys.stdin.read(), binary=True))')
+	cecho $pink "ID $short_id selected. Reading properties."
+	restore_lv_info=$(restic snapshots --json $short_id)
+	restore_lv_size=$(echo $restore_lv_info | jq '.tags' | grep -o '[0-9]*\.[0-9]*._size' | sed 's/_size$//')
+	restore_lv_size_int=$( echo $restore_lv_size | python3 -c 'import sys; import humanfriendly; print (humanfriendly.parse_size(sys.stdin.read(), binary=True))')
 
-	echo "[INFO] LV Name: ${RESTORE_LV}"
-	echo "[INFO] LV Size: ${restore_size}, ${restore_size_int}"
+	echo "[INFO] LV Name: ${restore_lv_name}"
+	echo "[INFO] LV Size: ${restore_lv_size}, ${restore_lv_size_int}"
 
 	# Check if a similar lv is present
-	if [ $(lvs --noheading -o lv_path ${vg} | grep "${RESTORE_LV}") ]
+	if [ $(lvs --noheading -o lv_path ${vg} | grep "${restore_lv_name}") ]
 	then
-		cecho $red "There is already an LV with the name ${RESTORE_LV} on ${vg}."
+		cecho $red "There is already an LV with the name ${restore_lv_name} on ${vg}."
 		cecho $red "Please rename or remove the LV manually!"
 		failed
 		exit
 	fi
 
 	# Create the new LV
-	echo "Creating LV ${RESTORE_LV}, ${restore_size} on ${vg}"
+	echo "Creating LV ${restore_lv_name}, ${restore_lv_size} on ${vg}"
 	sleep 2
-	lvcreate -n ${RESTORE_LV} -L ${restore_size} ${vg} ${pv}
+	lvcreate -n ${restore_lv_name} -L ${restore_lv_size} ${vg} ${pv}
 
-	restore_path=$(lvs --noheading -o lv_path | grep -P "/${RESTORE_LV}( |$)" | tr -d '  ')
-	echo "[INFO] LV PATH: $restore_path"
+	restore_lv_path=$(lvs --noheading -o lv_path | grep -P "/${restore_lv_name}( |$)" | tr -d '  ')
+	echo "[INFO] LV PATH: $restore_lv_path"
 
-	cecho $pink "STARTING RESTORE of ${RESTORE_LV}"
+	echo
+	cecho $green "===================="
+	cecho $green "STARTING THE RESTORE"
+	echo
+	sleep 5
+	restic dump $short_id ${restore_lv_name}.img.gz | \
+		unpigz | pv -s ${restore_lv_size_int} | \
+		dd of=${restore_lv_path} bs=4M
+}
+
+file-level-restore () {
+	command -v pv >/dev/null 2>&1 || { echo "[Error] Please install pv"; exit 1; }
+	command -v awk >/dev/null 2>&1 || { echo "[Error] Please install awk"; exit 1; }
+	command -v jq >/dev/null 2>&1 || { echo "[Error] Please install jq"; exit 1; }
+	command -v pip3 >/dev/null 2>&1 || { echo "[Error] Please install python3-pip"; exit 1; }
+	if ! `python3 -c 'import humanfriendly' >/dev/null 2>&1`
+	then
+		cecho $red "Could not import python3 humanfriendly!"
+		cecho $red "Please run 'pip3 install humanfriendly'."
+	fi
+
+	cecho $pink "Getting all snapshots of ${restore_lv_name}"
+	restic snapshots --tag file-level-backup,${restore_lv_name}
+
+	snapshots_json=$(restic snapshots --json --tag file-level-backup,${restore_lv_name})
+	arr=( $(echo $snapshots_json | jq -r '.[].short_id') )
+
+	COLUMNS=12
+	cecho $pink "Which snapshot should be restored?"
+	select short_id in ${arr[@]}
+	do
+	    [ $short_id ] && break
+	done
+	unset COLUMNS
+
+	echo "ID $short_id selected. Reading properties."
+	restore_lv_info=$(restic snapshots --json $short_id)
+	restore_lv_org_size=$(echo $restore_lv_info | jq '.[0].tags' | grep -o '[0-9]*\.[0-9]*._size' | sed 's/_size$//')
+	restore_lv_org_size_int=$( echo $restore_lv_org_size | python3 -c 'import sys; import humanfriendly; print (humanfriendly.parse_size(sys.stdin.read(), binary=True))')
+	restore_lv_total_size_int=$(restic stats --json $short_id | jq '.total_size')
+	restore_lv_total_size=$( echo $restore_lv_total_size_int  | numfmt --to=iec)
+
+	echo "[INFO] LV Name: ${restore_lv_name}"
+	echo "[INFO] LV's original size: ${restore_lv_org_size}, ${restore_lv_org_size_int}"
+	echo "[INFO] LV's total required size: ${restore_lv_total_size}, ${restore_lv_total_size_int}"
+
+  cecho $pink "What size do you want the new LV?"
+	read -p "[${restore_lv_org_size}]" restore_lv_size
+	restore_lv_size=${restore_lv_size:-${restore_lv_org_size}}
+	echo "[INFO] LV Size: $restore_lv_size"
+
+	# Check if a similar lv is present
+	if [ $(lvs --noheading -o lv_path ${vg} | grep "${restore_lv_name}") ]
+	then
+		cecho $red "There is already an LV with the name ${restore_lv_name} on ${vg}."
+		cecho $red "Please rename or remove the LV manually!"
+		failed
+		exit 1
+	fi
+
+	# Create the new LV
+	echo "Creating LV ${restore_lv_name}, ${restore_lv_size} on ${vg}"
 	sleep 2
-	restic dump --path /${RESTORE_LV}.img.gz $short_id ${RESTORE_LV}.img.gz | \
-		unpigz | pv -s ${restore_size_int} | \
-		dd of=${restore_path} bs=4M
+	lvcreate -n ${restore_lv_name} -L ${restore_lv_size} ${vg} ${pv}
+
+	restore_lv_path=$(lvs --noheading -o lv_path | grep -P "/${restore_lv_name}( |$)" | tr -d '  ')
+	restore_lv_mountpoint="/mnt/${restore_lv_name}_snapshot"
+	echo "[INFO] LV PATH: $restore_lv_path"
+	echo "[INFO] LV MOUNTPOINT: $restore_lv_mountpoint"
+
+	# Format Disk
+	mkfs.ext4 $restore_lv_path
+
+	# Create the snapshot mount directory
+	if [ ! -d ${restore_lv_mountpoint} ]
+	then
+		mkdir ${restore_lv_mountpoint}
+	else
+		cecho $red "The mountpoint ${restore_lv_mountpoint} exists."
+		cecho $red "Please check and remove it manually!"
+		exit 1
+	fi
+
+	# Protect the mount-point
+	chmod go-rwx ${restore_lv_mountpoint}
+
+	# Mount the volume
+	mount ${restore_lv_path} ${restore_lv_mountpoint}
+
+	echo
+	cecho $green "===================="
+	cecho $green "STARTING THE RESTORE"
+	echo
+	sleep 5
+  restic restore $short_id --include ${restore_lv_mountpoint} --target / | \
+  	tee -a ${LOGDIR}/lvm-restic-file-level-restore.log
+
+  # Unmount the volume & delete the mount-point
+	umount ${restore_lv_mountpoint}
+	rmdir ${restore_lv_mountpoint}
 }
 
 restore () {
@@ -476,12 +558,12 @@ restore () {
 			# Read the file provided and backup each LV
 			grep -v '^#' ${LV_TO_RESTORE} | while read -r line
 			do
-				RESTORE_LV=$line
+				restore_lv_name=$line
 				eval $cmd
 			done
 		else
 			# Backup LV provided
-			RESTORE_LV=${LV_TO_RESTORE}
+			restore_lv_name=${LV_TO_RESTORE}
 			eval $cmd
 		fi
 	else
