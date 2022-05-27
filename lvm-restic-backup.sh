@@ -6,6 +6,7 @@
 
 # Exit if any statement returns a non-true value
 set -e
+set -o pipefail
 
 # Define various output colors
 cecho () {
