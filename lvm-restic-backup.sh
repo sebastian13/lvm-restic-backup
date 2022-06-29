@@ -209,6 +209,8 @@ ctrl_c () {
 
 # Block Level Backup piped to restic
 block-level-backup () {
+	printf "\n======\n`date`\nBACKUP_LV: ${BACKUP_LV}\n\n" | tee -a ${LOGDIR}/lvm-restic-block-level-backup.log
+
 	dd if=${SNAPSHOT_PATH} bs=4M status=none | \
 		restic backup \
 		--verbose \
@@ -225,6 +227,8 @@ block-level-backup () {
 
 block-level-gz-backup () {
 	command -v pigz >/dev/null 2>&1 || { echo "[Error] Please install pigz"; exit 1; }
+
+	printf "\n======\n`date`\nBACKUP_LV: ${BACKUP_LV}\n\n" | tee -a ${LOGDIR}/lvm-restic-block-level-gz-backup.log
 
 	dd if=${SNAPSHOT_PATH} bs=4M status=none | \
 		pigz --fast --rsyncable | \
@@ -259,6 +263,8 @@ file-level-backup () {
 
 	# Check free Space on volume
 	DF=$(df -hlP ${SNAPSHOT_MOUNTPOINT} | awk 'int($5)>80{print "Volume "$1" has only "$4" free space left."}')
+
+	printf "\n======\n`date`\nBACKUP_LV: ${BACKUP_LV}\n\n" | tee -a ${LOGDIR}/lvm-restic-file-level-backup.log
 
 	restic \
 		--verbose \
