@@ -390,7 +390,7 @@ block-level-restore () {
 
 	cecho $pink "ID $short_id selected. Reading properties."
 	restore_lv_info=$(restic snapshots --json $short_id)
-	restore_lv_size=$(echo $restore_lv_info | jq '.tags' | grep -o '[0-9]*\.[0-9]*._size' | sed 's/_size$//')
+	restore_lv_size=$(echo $restore_lv_info | jq '.[0].tags' | grep -o '[0-9]*\.[0-9]*._size' | sed 's/_size$//')
 	restore_lv_size_int=$( echo $restore_lv_size | python3 -c 'import sys; import humanfriendly; print (humanfriendly.parse_size(sys.stdin.read(), binary=True))')
 
 	echo "[INFO] LV Name: ${restore_lv_name}"
@@ -451,7 +451,7 @@ block-level-gz-restore () {
 
 	cecho $pink "ID $short_id selected. Reading properties."
 	restore_lv_info=$(restic snapshots --json $short_id)
-	restore_lv_size=$(echo $restore_lv_info | jq '.tags' | grep -o '[0-9]*\.[0-9]*._size' | sed 's/_size$//')
+	restore_lv_size=$(echo $restore_lv_info | jq '.[0].tags' | grep -o '[0-9]*\.[0-9]*._size' | sed 's/_size$//')
 	restore_lv_size_int=$( echo $restore_lv_size | python3 -c 'import sys; import humanfriendly; print (humanfriendly.parse_size(sys.stdin.read(), binary=True))')
 
 	echo "[INFO] LV Name: ${restore_lv_name}"
