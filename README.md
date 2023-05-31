@@ -34,6 +34,10 @@ lvm-rescript [repo_name] [command] [lv_name|path-to-list]
 - `block-level-gz-restore` restores dd and pigz stored logical volume(s)
 - `file-level-restore` restores as ext4 disk using a volume mount
 
+### Logical Volume
+- Provide the LV name without VG.
+- Provide the path to a list of LV names. LVs listed as #comment won't be backed up.
+- Omit, to backup all volumes, except \*bak, \*cache, \*swap, \*swp and \*tmp.
 
 ## How to install
 

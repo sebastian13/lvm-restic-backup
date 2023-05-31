@@ -40,6 +40,7 @@ help () {
 	cecho $blue  "Logical Volume:"
 	cecho $blue  "  Provide the LV name without VG."
 	cecho $blue  "  Provide the path to a list of LV names. LVs listed as #comment won't be backed up."
+	cecho $blue  "  Omit, to backup all volumes, except *bak, *cache, *swap, *swp and *tmp."
 	echo
 }
 
@@ -177,9 +178,25 @@ clean-all-snapshots () {
 		sleep 10
 		for i in ${ACTIVE_SNAPSHOTS}
 		do
+			SNAPSHOT_LV_NAME=$(lvs -o lv_name --noheadings --select "lv_path=$i" | tr -d '  ')
+			SNAPSHOT_MOUNTPOINT="/mnt/${SNAPSHOT_LV_NAME}"
+			if [ -d ${SNAPSHOT_MOUNTPOINT} ]
+			then
+				if (mountpoint -q "$SNAPSHOT_MOUNTPOINT")
+				then
+					cecho $red "$SNAPSHOT_LV_NAME is mounted! I will unmount ${SNAPSHOT_MOUNTPOINT} in 5 seconds!"
+					sleep 5
+					umount ${SNAPSHOT_MOUNTPOINT}
+					echo
+				fi
+				cecho $red "Removing ${SNAPSHOT_MOUNTPOINT}"
+				rmdir ${SNAPSHOT_MOUNTPOINT}
+				echo
+			fi
+			cecho $red "Removing LV $i"
 			lvremove -f $i
+			echo
 		done
-		echo
 	else
 		cecho $green "There are no active snapshots named *_snapshot on this system."
 		echo
@@ -194,13 +211,8 @@ ctrl_c () {
 		cecho $red "Trapped CTRL-C"
 		cecho $red "Signal interrupt received, cleaning up"
 		echo
-		if [ ! -d ${SNAPSHOT_MOUNTPOINT} ]
-		then
-        	umount ${SNAPSHOT_MOUNTPOINT}
-			rmdir ${SNAPSHOT_MOUNTPOINT}
-		fi
-        clean-all-snapshots
-        exit 130
+		clean-all-snapshots
+		exit 130
 }
 
 # -------------------------------------------------------
@@ -353,9 +365,12 @@ backup () {
 			snap-and-back
 		fi
 	else
-		echo "LV(s) to backup missing. Please specify [lv-name] or [path-to-list]."
-		echo "Run [lvm-rescript help] for usage."
-		exit 1
+		lvs --noheading -o lv_name --select 'lv_attr!~[^s],lv_name!~[bak$|cache$|swap$|swp$|tmp$]' | \
+			tr -d '  ' | while read line
+		do
+			BACKUP_LV=$line
+			snap-and-back
+		done
 	fi
 }
 
