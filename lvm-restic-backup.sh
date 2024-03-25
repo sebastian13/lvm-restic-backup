@@ -657,21 +657,16 @@ restore () {
 
 zabbix-requirements () {
 	skip_zabbix=false
-	if ! `systemctl is-active --quiet zabbix-agent`
+	if ! `systemctl is-active --quiet zabbix-agent2`
 	then
 		echo
-		cecho $red "Zabbix-Agent is not running. Will skip zabbix logging."
-		skip_zabbix=true
-	fi
-	if ! `command -v pip3 >/dev/null 2>&1`
-	then
-		cecho $red "Please install python3-pip."
+		cecho $red "Zabbix-Agent-2 is not running. Will skip zabbix logging."
 		skip_zabbix=true
 	fi
 	if ! `python3 -c 'import humanfriendly' >/dev/null 2>&1`
 	then
 		cecho $red "Could not import python3 humanfriendly!"
-		cecho $red "Please run 'pip3 install humanfriendly'."
+		cecho $red "Please install python3-humanfriendly."
 		skip_zabbix=true
 	fi
 	if [ ! -f "/etc/zabbix/scripts/rescript-lvm-discovery.pl" ]
@@ -693,7 +688,7 @@ zabbix-discovery () {
 		LVM_DISC=$(/etc/zabbix/scripts/rescript-lvm-discovery.pl)
 		echo "$LVM_DISC" | python3 -m json.tool
 		echo
-		zabbix_sender --config /etc/zabbix/zabbix_agentd.conf --key "rescript.lv.discovery" --value "$LVM_DISC" \
+		zabbix_sender --config /etc/zabbix/zabbix_agent2.conf --key "rescript.lv.discovery" --value "$LVM_DISC" \
 			|| { echo "[Error] Sending to Zabbix failed. Will skip logging for now."; skip_zabbix=true; }
 		echo
 	else
@@ -738,7 +733,7 @@ log-backup () {
 		# for ix in ${!arr[*]}; do printf "%s\n" "${arr[$ix]}"; done
 		# echo
 		send-to-zabbix () {
-			for ix in ${!arr[*]}; do printf "%s\n" "${arr[$ix]}"; done | zabbix_sender --config /etc/zabbix/zabbix_agentd.conf --with-timestamps --input-file -
+			for ix in ${!arr[*]}; do printf "%s\n" "${arr[$ix]}"; done | zabbix_sender --config /etc/zabbix/zabbix_agent2.conf --with-timestamps --input-file -
 		}
 
 		# Send Data
