@@ -121,10 +121,10 @@ fi
 
 
 # -------------------------------------------------------
-#   Wait for any other restic backup to finish
+#   Wait for any other restic process to finish
 # -------------------------------------------------------
 
-while (pgrep -x 'restic backup')
+while (pgrep -x 'restic')
 do
     echo "[INFO] Waiting for the listed restic processes to finish"
     sleep 60
