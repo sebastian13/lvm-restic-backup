@@ -146,9 +146,9 @@ shlock()            { _lock s; }      # obtain a shared lock
 unlock()            { _lock u; }      # drop a lock
 chlock()            { _lock n; }      # check a lock
 
-chlock || { cecho $yellow "[INFO] A lockfile on ${LOCKFILE} is present. This indicates";         \
-            cecho $yellow "       another instance of lvm-restic-backup is currently running.";  \
-            cecho $yellow "       Will wait for max. 10 hours for the other instance to finish." }
+chlock || { cecho $yellow "[INFO] A lockfile on ${LOCKFILE} is present. This indicates";          \
+            cecho $yellow "       another instance of lvm-restic-backup is currently running.";   \
+            cecho $yellow "       Will wait for max. 10 hours for the other instance to finish."; }
 
 exlock || { cecho $red "[ABORTED] A lockfile on ${LOCKFILE} is present. This indicates";     \
             cecho $red "          another instance of lvm-restic-backup was running.";       \
