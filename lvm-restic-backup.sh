@@ -121,15 +121,38 @@ fi
 
 
 # -------------------------------------------------------
-#   Wait for any other restic process to finish
+#   Avoid running multiple instances of this script
+#
+#   Copyright (C) 2009 Przemyslaw Pawelczyk <przemoc@gmail.com>
+#   https://gist.github.com/przemoc/571091
+#   SPDX-License-Identifier: MIT
 # -------------------------------------------------------
 
-while (pgrep -x 'restic')
-do
-    echo "[INFO] Waiting for the listed restic processes to finish"
-    sleep 60
-done
+# Suppress LVM warning about open file descriptors
+export LVM_SUPPRESS_FD_WARNINGS=1
 
+LOCKFILE="/var/lock/lvm-restic-backup"
+LOCKFD=99
+ 
+_lock()             { flock -"$@" $LOCKFD; }
+_no_more_locking()  { _lock u; _lock xn && rm -f $LOCKFILE; }
+_prepare_locking()  { eval "exec $LOCKFD>\"$LOCKFILE\""; trap _no_more_locking EXIT; }
+ 
+_prepare_locking
+
+exlock_now()        { _lock xn; }     # obtain an exclusive lock immediately or fail
+exlock()            { _lock xw 600; } # obtain an exclusive lock, fail if cannot be acquired within 10h
+shlock()            { _lock s; }      # obtain a shared lock
+unlock()            { _lock u; }      # drop a lock
+chlock()            { _lock n; }      # check a lock
+
+chlock || { cecho $yellow "[INFO] A lockfile on ${LOCKFILE} is present. This indicates";         \
+            cecho $yellow "       another instance of lvm-restic-backup is currently running.";  \
+            cecho $yellow "       Will wait for max. 10 hours for the other instance to finish." }
+
+exlock || { cecho $red "[ABORTED] A lockfile on ${LOCKFILE} is present. This indicates";     \
+            cecho $red "          another instance of lvm-restic-backup was running.";       \
+            cecho $red "          The execution was stopped after waiting for 10h."; exit 1; }
 
 # -------------------------------------------------------
 #   The backup tasks
