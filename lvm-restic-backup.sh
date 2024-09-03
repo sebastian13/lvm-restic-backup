@@ -140,11 +140,11 @@ _prepare_locking()  { eval "exec $LOCKFD>\"$LOCKFILE\""; trap _no_more_locking E
  
 _prepare_locking
 
-exlock_now()        { _lock xn; }     # obtain an exclusive lock immediately or fail
-exlock()            { _lock xw 600; } # obtain an exclusive lock, fail if cannot be acquired within 10h
-shlock()            { _lock s; }      # obtain a shared lock
-unlock()            { _lock u; }      # drop a lock
-chlock()            { _lock n; }      # check a lock
+exlock_now()        { _lock xn; }       # obtain an exclusive lock immediately or fail
+exlock()            { _lock xw 36000; } # obtain an exclusive lock, fail if cannot be acquired within 10h
+shlock()            { _lock s; }        # obtain a shared lock
+unlock()            { _lock u; }        # drop a lock
+chlock()            { _lock n; }        # check a lock
 
 chlock || { cecho $yellow "[INFO] A lockfile on ${LOCKFILE} is present. This indicates";          \
             cecho $yellow "       another instance of lvm-restic-backup is currently running.";   \
